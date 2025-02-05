@@ -21,6 +21,17 @@ jobs:
       - run:
           name: "Say hello"
           command: "echo Hello, World!"
+  run-tests:
+    docker:
+      - image: cimg/node:current # Используем Node.js для выполнения тестов
+    steps:
+      - checkout
+      - run:
+          name: "Install dependencies"
+          command: "npm install"
+      - run:
+          name: "Run tests"
+          command: "npm test"
 
 # Orchestrate jobs using workflows
 # See: https://circleci.com/docs/workflows/ & https://circleci.com/docs/configuration-reference/#workflows
@@ -29,3 +40,4 @@ workflows:
     # Inside the workflow, you define the jobs you want to run.
     jobs:
       - say-hello
+      - run-tests
