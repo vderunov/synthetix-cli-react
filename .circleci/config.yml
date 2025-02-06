@@ -21,12 +21,6 @@ jobs:
     steps:
       - checkout
       - run:
-          name: "Install jq"
-          command: apt-get update -y && apt-get install -y jq
-      - run:
-          name: "Install curl"
-          command: apt-get update -y && apt-get install -y curl
-      - run:
           name: "Validate Environment Variables"
           command: |
             if [ -z "$JWT_SECRET" ]; then
@@ -35,14 +29,23 @@ jobs:
             if [ -z "$NAMESPACE" ]; then
               echo "Error: NAMESPACE is not set!" && exit 1
             fi
+            if [ -z "$PRIVATE_KEY" ]; then
+              echo "Error: PRIVATE_KEY is not set!" && exit 1
+            fi
             echo "Environment variables are set correctly."
       - run:
-          name: "Check API Connectivity"
+          name: "Validate API Connection"
           command: |
             if ! curl -I "<<parameters.api-url>>unique-namespace"; then
               echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
             fi
             echo "API endpoint is reachable."
+      - run:
+          name: "Install jq"
+          command: apt-get update -y && apt-get install -y jq
+      - run:
+          name: "Install curl"
+          command: apt-get update -y && apt-get install -y curl
       - run:
           name: "Check Unique Namespace"
           command: |
@@ -101,7 +104,10 @@ jobs:
       - run:
           name: "Parse and Check Mint Result"
           command: |
-            if grep -q "Transaction successful" logs/mint_result.log; then
+            status=$(grep "status" logs/mint_result.log | awk '{print $2}')
+            tx_hash=$(grep "transactionHash" logs/mint_result.log | awk '{print $2}')
+            
+            if [ "$status" -eq 1 ] && [ -n "$tx_hash" ]; then
               echo "Minting succeeded!"
             else
               echo "Minting failed. Check logs/mint_result.log for details." && exit 1
