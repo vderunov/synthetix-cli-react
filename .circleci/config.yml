@@ -92,6 +92,7 @@ jobs:
       - run:
           name: "Mint Namespace Token and Save Logs"
           command: |
+            mkdir -p logs
             cast send <<parameters.contract-address>> "safeMint(string)" "$NAMESPACE" \
               --rpc-url <<parameters.rpc-url>> \
               --private-key "$PRIVATE_KEY" | tee logs/mint_result.log
