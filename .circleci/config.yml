@@ -21,18 +21,18 @@ jobs:
     steps:
       - checkout
       - run:
+          name: "Install required packages"
+          command: |
+            apt-get update -y && apt-get install -y jq curl
+      - run:
           name: "Validate Environment Variables"
           command: |
-            if [ -z "$JWT_SECRET" ]; then
-              echo "Error: JWT_SECRET is not set!" && exit 1
-            fi
-            if [ -z "$NAMESPACE" ]; then
-              echo "Error: NAMESPACE is not set!" && exit 1
-            fi
-            if [ -z "$PRIVATE_KEY" ]; then
-              echo "Error: PRIVATE_KEY is not set!" && exit 1
-            fi
-            echo "Environment variables are set correctly."
+            for var in JWT_SECRET NAMESPACE PRIVATE_KEY; do
+              if [ -z "${!var}" ]; then
+                echo "Error: $var is not set!" && exit 1
+              fi
+            done
+            echo "All required environment variables are set."
       - run:
           name: "Validate API Connection"
           command: |
@@ -41,15 +41,11 @@ jobs:
             fi
             echo "API endpoint is reachable."
       - run:
-          name: "Install jq"
-          command: apt-get update -y && apt-get install -y jq
-      - run:
-          name: "Install curl"
-          command: apt-get update -y && apt-get install -y curl
+          name: "Prepare Logs Directory"
+          command: mkdir -p logs
       - run:
           name: "Check Unique Namespace"
           command: |
-            mkdir -p logs
             http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-namespace" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
@@ -73,7 +69,6 @@ jobs:
       - run:
           name: "Check Unique Generated Key"
           command: |
-            mkdir -p logs
             http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-generated-key" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
@@ -97,7 +92,6 @@ jobs:
       - run:
           name: "Mint Namespace Token and Save Logs"
           command: |
-            mkdir -p logs
             cast send <<parameters.contract-address>> "safeMint(string)" "$NAMESPACE" \
               --rpc-url <<parameters.rpc-url>> \
               --private-key "$PRIVATE_KEY" | tee logs/mint_result.log
@@ -112,14 +106,29 @@ jobs:
             else
               echo "Minting failed. Check logs/mint_result.log for details." && exit 1
             fi
+      - run:
+          name: "Generate Key Pair"
+          command: |
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/key/gen?arg=$NAMESPACE&type=rsa" \
+              -H "Authorization: Bearer $JWT_SECRET" \
+              -H "Content-Type: application/json")
+
+            body=$(cat body.txt)
+
+            echo "$body" >> logs/generate_key_pair.log
+
+            if [ "$http_code" -ne 200 ]; then
+              echo "Error: Failed to generate a new key pair. HTTP status $http_code. Response: $body"
+              exit 1
+            fi
+
+            echo "Key pair generated successfully. Response: $body"
       - store_artifacts:
           path: logs/check_unique_namespace.log
           destination: unique-namespace-log
-
       - store_artifacts:
           path: logs/check_unique_generated_key.log
           destination: unique-generated-key-log
-
       - store_artifacts:
           path: logs/mint_result.log
           destination: mint-result-log
