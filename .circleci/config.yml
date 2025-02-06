@@ -46,6 +46,7 @@ jobs:
       - run:
           name: "Check Unique Namespace"
           command: |
+            mkdir -p logs
             response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>unique-namespace" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
