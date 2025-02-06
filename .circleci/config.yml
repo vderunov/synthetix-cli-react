@@ -17,20 +17,68 @@ jobs:
         default: "wss://optimism-sepolia-rpc.publicnode.com"
       api-url:
         type: string
-        default: "http://localhost:3005/"
+        default: "http://45.146.7.38:3005/"
     steps:
       - checkout
       - run:
+          name: "Generate Cache Key for jq"
+          command: |
+            apt-get update
+            jq_version=$(apt-cache madison jq | head -n 1 | awk '{print $3}')
+            echo "jq-${jq_version}" > jq-cache-key.txt
+      - restore_cache:
+          keys:
+            - jq-dependencies-{{ checksum "jq-cache-key.txt" }}
+            - jq-dependencies-
+      - run:
           name: "Install jq"
-          command: apt-get update -y && apt-get install -y jq
+          command: |
+            apt-get update -y && apt-get install -y jq
+      - save_cache:
+          paths:
+            - /var/cache/apt
+            - /var/lib/apt
+          key: jq-dependencies-{{ checksum "jq-cache-key.txt" }}
+      - run:
+          name: "Generate Cache Key for curl"
+          command: |
+            apt-get update
+            curl_version=$(apt-cache madison curl | head -n 1 | awk '{print $3}')
+            echo "curl-${curl_version}" > curl-cache-key.txt
+      - restore_cache:
+          keys:
+            - curl-dependencies-{{ checksum "curl-cache-key.txt" }}
+            - curl-dependencies-
       - run:
           name: "Install curl"
-          command: apt-get update -y && apt-get install -y curl
+          command: |
+            apt-get update -y && apt-get install -y curl
+      - save_cache:
+          paths:
+            - /var/cache/apt
+            - /var/lib/apt
+          key: curl-dependencies-{{ checksum "curl-cache-key.txt" }}
+      - run:
+          name: "Validate Environment Variables"
+          command: |
+            if [ -z "$JWT_SECRET" ]; then
+              echo "Error: JWT_SECRET is not set!" && exit 1
+            fi
+            if [ -z "$NAMESPACE" ]; then
+              echo "Error: NAMESPACE is not set!" && exit 1
+            fi
+            echo "Environment variables are set correctly."
+      - run:
+          name: "Check API Connectivity"
+          command: |
+            if ! curl -I "<<parameters.api-url>>unique-namespace"; then
+              echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
+            fi
+            echo "API endpoint is reachable."
       - run:
           name: "Check Unique Namespace"
           command: |
-            mkdir -p logs
-            response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>/unique-namespace" \
+            response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>unique-namespace" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"namespace":"'"$NAMESPACE"'"}')
@@ -53,8 +101,7 @@ jobs:
       - run:
           name: "Check Unique Generated Key"
           command: |
-            mkdir -p logs
-            response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>/unique-generated-key" \
+            response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>unique-generated-key" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"key":"'"$NAMESPACE"'"}')
@@ -77,7 +124,6 @@ jobs:
       - run:
           name: "Mint Namespace Token and Save Logs"
           command: |
-            mkdir -p logs
             cast send <<parameters.contract-address>> "safeMint(string)" "$NAMESPACE" \
               --rpc-url <<parameters.rpc-url>> \
               --private-key "$PRIVATE_KEY" | tee logs/mint_result.log
@@ -90,8 +136,16 @@ jobs:
               echo "Minting failed. Check logs/mint_result.log for details." && exit 1
             fi
       - store_artifacts:
-          path: logs
-          destination: minting_logs
+          path: logs/check_unique_namespace.log
+          destination: unique-namespace-log
+
+      - store_artifacts:
+          path: logs/check_unique_generated_key.log
+          destination: unique-generated-key-log
+
+      - store_artifacts:
+          path: logs/mint_result.log
+          destination: mint-result-log
 
 workflows:
   main-workflow:
