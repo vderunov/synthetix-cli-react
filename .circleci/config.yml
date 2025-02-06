@@ -1,13 +1,17 @@
 version: 2.1
 
 executors:
-  docker-executor:
+  foundry-executor:
     docker:
       - image: ghcr.io/foundry-rs/foundry:latest
 
+  node-executor:
+    docker:
+      - image: cimg/node:22.11.0
+
 jobs:
   mint-contract:
-    executor: docker-executor
+    executor: foundry-executor
     parameters:
       contract-address:
         type: string
@@ -19,11 +23,13 @@ jobs:
         type: string
         default: "http://45.146.7.38:3005/"
     steps:
+      - attach_workspace:
+          at: /workspace
       - checkout
       - run:
           name: "Install required packages"
           command: |
-            apt-get update -y && apt-get install -y nodejs npm jq curl
+            apt-get update -y && apt-get install -y jq curl
       - run:
           name: "Validate Environment Variables"
           command: |
@@ -123,17 +129,10 @@ jobs:
             fi
 
             echo "Key pair generated successfully. Response: $body"
-
-      - run:
-          name: "Generate CAR File"
-          command: |
-            npm install
-            node generateCarBlob.js
-
       - run:
           name: "Import CAR File via DAG Import"
           command: |
-            car_file=$(find car_files -type f -name "*.car")
+            car_file=$(find /workspace/car_files -type f -name "*.car")
             if [ -z "$car_file" ]; then
               echo "Error: CAR file not found!" && exit 1
             fi
@@ -169,7 +168,24 @@ jobs:
           path: logs/dag_import.log
           destination: dag-import-log
 
+  generate-car-file:
+    executor: node-executor
+    steps:
+      - checkout
+      - run:
+          name: "Generate CAR File"
+          command: |
+            npm install
+            node generateCarBlob.js
+      - persist_to_workspace:
+          root: .
+          paths:
+            - car_files/
+
 workflows:
   main-workflow:
     jobs:
-      - mint-contract
+      - generate-car-file
+      - mint-contract:
+          requires:
+            - generate-car-file
