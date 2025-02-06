@@ -21,18 +21,18 @@ jobs:
     steps:
       - checkout
       - run:
+          name: "Install required packages"
+          command: |
+            apt-get update -y && apt-get install -y jq curl
+      - run:
           name: "Validate Environment Variables"
           command: |
-            if [ -z "$JWT_SECRET" ]; then
-              echo "Error: JWT_SECRET is not set!" && exit 1
-            fi
-            if [ -z "$NAMESPACE" ]; then
-              echo "Error: NAMESPACE is not set!" && exit 1
-            fi
-            if [ -z "$PRIVATE_KEY" ]; then
-              echo "Error: PRIVATE_KEY is not set!" && exit 1
-            fi
-            echo "Environment variables are set correctly."
+            for var in JWT_SECRET NAMESPACE PRIVATE_KEY; do
+              if [ -z "${!var}" ]; then
+                echo "Error: $var is not set!" && exit 1
+              fi
+            done
+            echo "All required environment variables are set."
       - run:
           name: "Validate API Connection"
           command: |
@@ -40,12 +40,6 @@ jobs:
               echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
             fi
             echo "API endpoint is reachable."
-      - run:
-          name: "Install jq"
-          command: apt-get update -y && apt-get install -y jq
-      - run:
-          name: "Install curl"
-          command: apt-get update -y && apt-get install -y curl
       - run:
           name: "Check Unique Namespace"
           command: |
@@ -115,11 +109,9 @@ jobs:
       - store_artifacts:
           path: logs/check_unique_namespace.log
           destination: unique-namespace-log
-
       - store_artifacts:
           path: logs/check_unique_generated_key.log
           destination: unique-generated-key-log
-
       - store_artifacts:
           path: logs/mint_result.log
           destination: mint-result-log
