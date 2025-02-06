@@ -21,43 +21,11 @@ jobs:
     steps:
       - checkout
       - run:
-          name: "Generate Cache Key for jq"
-          command: |
-            apt-get update
-            jq_version=$(apt-cache madison jq | head -n 1 | awk '{print $3}')
-            echo "jq-${jq_version}" > jq-cache-key.txt
-      - restore_cache:
-          keys:
-            - jq-dependencies-{{ checksum "jq-cache-key.txt" }}
-            - jq-dependencies-
-      - run:
           name: "Install jq"
-          command: |
-            apt-get update -y && apt-get install -y jq
-      - save_cache:
-          paths:
-            - /var/cache/apt
-            - /var/lib/apt
-          key: jq-dependencies-{{ checksum "jq-cache-key.txt" }}
-      - run:
-          name: "Generate Cache Key for curl"
-          command: |
-            apt-get update
-            curl_version=$(apt-cache madison curl | head -n 1 | awk '{print $3}')
-            echo "curl-${curl_version}" > curl-cache-key.txt
-      - restore_cache:
-          keys:
-            - curl-dependencies-{{ checksum "curl-cache-key.txt" }}
-            - curl-dependencies-
+          command: apt-get update -y && apt-get install -y jq
       - run:
           name: "Install curl"
-          command: |
-            apt-get update -y && apt-get install -y curl
-      - save_cache:
-          paths:
-            - /var/cache/apt
-            - /var/lib/apt
-          key: curl-dependencies-{{ checksum "curl-cache-key.txt" }}
+          command: apt-get update -y && apt-get install -y curl
       - run:
           name: "Validate Environment Variables"
           command: |
