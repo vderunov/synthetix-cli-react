@@ -9,26 +9,26 @@ jobs:
   mint-contract:
     executor: docker-executor
     parameters:
-      private-key:
-        type: env_var_name
-        default: PRIVATE_KEY
       contract-address:
-        type: env_var_name
-        default: CONTRACT_ADDRESS
+        type: string
+        default: "0xe1C296cb79E050EB2A52b24D9Be91f8599B32011"
       rpc-url:
-        type: env_var_name
-        default: RPC_URL
-      namespace:
-        type: env_var_name
-        default: NAMESPACE
+        type: string
+        default: "wss://optimism-sepolia-rpc.publicnode.com"
       api-url:
-        type: env_var_name
-        default: API_URL_LOCAL
-      jwt-secret:
-        type: env_var_name
-        default: JWT_SECRET
+        type: string
+        default: "http://localhost:3005/"
     steps:
       - checkout
+      - run:
+          name: "Log Parameter Values"
+          command: |
+            echo "PRIVATE_KEY: $PRIVATE_KEY"
+            echo "NAMESPACE: $NAMESPACE"
+            echo "JWT_SECRET: $JWT_SECRET"
+            echo "CONTRACT_ADDRESS: <<parameters.contract-address>>"
+            echo "RPC_URL: <<parameters.rpc-url>>"
+            echo "API_URL_LOCAL: <<parameters.api-url>>"
       - run:
           name: "Install jq"
           command: apt-get update -y && apt-get install -y jq
@@ -40,11 +40,11 @@ jobs:
           command: |
             mkdir -p logs
             response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>/unique-namespace" \
-              -H "Authorization: Bearer <<parameters.jwt-secret>>" \
+              -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
-              -d '{"namespace":"'"<<parameters.namespace>>"'}')
-            http_code=$(tail -n1 \<<< "$response")
-            body=$(head -n-1 \<<< "$response")
+              -d '{"namespace":"'"$NAMESPACE"'"}')
+            http_code=$(tail -n1 <<< "$response")
+            body=$(head -n-1 <<< "$response")
             
             echo "$body" >> logs/check_unique_namespace.log
             
@@ -64,11 +64,11 @@ jobs:
           command: |
             mkdir -p logs
             response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>/unique-generated-key" \
-              -H "Authorization: Bearer <<parameters.jwt-secret>>" \
+              -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
-              -d '{"key":"'"<<parameters.namespace>>"'}')
-            http_code=$(tail -n1 \<<< "$response")
-            body=$(head -n-1 \<<< "$response")
+              -d '{"key":"'"$NAMESPACE"'"}')
+            http_code=$(tail -n1 <<< "$response")
+            body=$(head -n-1 <<< "$response")
             
             echo "$body" >> logs/check_unique_generated_key.log
             
@@ -87,9 +87,9 @@ jobs:
           name: "Mint Namespace Token and Save Logs"
           command: |
             mkdir -p logs
-            cast send <<parameters.contract-address>> "safeMint(string)" <<parameters.namespace>> \
+            cast send <<parameters.contract-address>> "safeMint(string)" "$NAMESPACE" \
               --rpc-url <<parameters.rpc-url>> \
-              --private-key <<parameters.private-key>> | tee logs/mint_result.log
+              --private-key "$PRIVATE_KEY" | tee logs/mint_result.log
       - run:
           name: "Parse and Check Mint Result"
           command: |
