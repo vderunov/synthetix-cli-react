@@ -31,7 +31,10 @@ jobs:
       - checkout
       - run:
           name: "Install jq"
-          command: sudo apt-get update -y && sudo apt-get install -y jq
+          command: apt-get update -y && apt-get install -y jq
+      - run:
+          name: "Install curl"
+          command: apt-get update -y && apt-get install -y curl
       - run:
           name: "Check Unique Namespace"
           command: |
@@ -40,8 +43,8 @@ jobs:
               -H "Authorization: Bearer <<parameters.jwt-secret>>" \
               -H "Content-Type: application/json" \
               -d '{"namespace":"'"<<parameters.namespace>>"'}')
-            http_code=$(tail -n1 <<< "$response")
-            body=$(head -n-1 <<< "$response")
+            http_code=$(tail -n1 \<<< "$response")
+            body=$(head -n-1 \<<< "$response")
             
             echo "$body" >> logs/check_unique_namespace.log
             
@@ -64,8 +67,8 @@ jobs:
               -H "Authorization: Bearer <<parameters.jwt-secret>>" \
               -H "Content-Type: application/json" \
               -d '{"key":"'"<<parameters.namespace>>"'}')
-            http_code=$(tail -n1 <<< "$response")
-            body=$(head -n-1 <<< "$response")
+            http_code=$(tail -n1 \<<< "$response")
+            body=$(head -n-1 \<<< "$response")
             
             echo "$body" >> logs/check_unique_generated_key.log
             
