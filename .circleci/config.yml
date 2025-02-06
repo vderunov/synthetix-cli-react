@@ -47,21 +47,21 @@ jobs:
           name: "Check Unique Namespace"
           command: |
             mkdir -p logs
-            response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>unique-namespace" \
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-namespace" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"namespace":"'"$NAMESPACE"'"}')
-            http_code=$(tail -n1 \<<< "$response")
-            body=$(head -n-1 \<<< "$response")
-            
+
+            body=$(cat body.txt)
+
             echo "$body" >> logs/check_unique_namespace.log
-            
+
             if [ "$http_code" -ne 200 ]; then
               echo "Error: HTTP status $http_code while checking namespace uniqueness. Response: $body"
               exit 1
             fi
 
-            is_unique=$(echo $body | jq -r '.unique')
+            is_unique=$(echo "$body" | jq -r '.unique')
             if [ "$is_unique" != "true" ]; then
               echo "Error: Namespace is not unique. Response: $body"
               exit 1
@@ -70,21 +70,22 @@ jobs:
       - run:
           name: "Check Unique Generated Key"
           command: |
-            response=$(curl -s -w "%{http_code}" -X POST "<<parameters.api-url>>unique-generated-key" \
+            mkdir -p logs
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-generated-key" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"key":"'"$NAMESPACE"'"}')
-            http_code=$(tail -n1 \<<< "$response")
-            body=$(head -n-1 \<<< "$response")
-            
+
+            body=$(cat body.txt)
+
             echo "$body" >> logs/check_unique_generated_key.log
-            
+
             if [ "$http_code" -ne 200 ]; then
               echo "Error: HTTP status $http_code while checking generated key uniqueness. Response: $body"
               exit 1
             fi
 
-            is_unique=$(echo $body | jq -r '.unique')
+            is_unique=$(echo "$body" | jq -r '.unique')
             if [ "$is_unique" != "true" ]; then
               echo "Error: Generated key is not unique. Response: $body"
               exit 1
