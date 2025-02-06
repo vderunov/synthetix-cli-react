@@ -21,15 +21,6 @@ jobs:
     steps:
       - checkout
       - run:
-          name: "Log Parameter Values"
-          command: |
-            echo "PRIVATE_KEY: $PRIVATE_KEY"
-            echo "NAMESPACE: $NAMESPACE"
-            echo "JWT_SECRET: $JWT_SECRET"
-            echo "CONTRACT_ADDRESS: <<parameters.contract-address>>"
-            echo "RPC_URL: <<parameters.rpc-url>>"
-            echo "API_URL_LOCAL: <<parameters.api-url>>"
-      - run:
           name: "Install jq"
           command: apt-get update -y && apt-get install -y jq
       - run:
@@ -43,8 +34,8 @@ jobs:
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"namespace":"'"$NAMESPACE"'"}')
-            http_code=$(tail -n1 <<< "$response")
-            body=$(head -n-1 <<< "$response")
+            http_code=$(tail -n1 \<<< "$response")
+            body=$(head -n-1 \<<< "$response")
             
             echo "$body" >> logs/check_unique_namespace.log
             
@@ -67,8 +58,8 @@ jobs:
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"key":"'"$NAMESPACE"'"}')
-            http_code=$(tail -n1 <<< "$response")
-            body=$(head -n-1 <<< "$response")
+            http_code=$(tail -n1 \<<< "$response")
+            body=$(head -n-1 \<<< "$response")
             
             echo "$body" >> logs/check_unique_generated_key.log
             
