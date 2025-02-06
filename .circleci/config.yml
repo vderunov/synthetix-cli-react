@@ -23,7 +23,7 @@ jobs:
       - run:
           name: "Install required packages"
           command: |
-            apt-get update -y && apt-get install -y jq curl
+            apt-get update -y && apt-get install -y nodejs npm jq curl
       - run:
           name: "Validate Environment Variables"
           command: |
@@ -123,6 +123,36 @@ jobs:
             fi
 
             echo "Key pair generated successfully. Response: $body"
+
+      - run:
+          name: "Generate CAR File"
+          command: |
+            npm install
+            node generateCarBlob.js
+
+      - run:
+          name: "Import CAR File via DAG Import"
+          command: |
+            car_file=$(find car_files -type f -name "*.car")
+            if [ -z "$car_file" ]; then
+              echo "Error: CAR file not found!" && exit 1
+            fi
+            
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/dag/import?pin-roots=true" \
+              -H "Authorization: Bearer $JWT_SECRET" \
+              -F "file=@${car_file}")
+            
+            body=$(cat body.txt)
+            
+            echo "$body" >> logs/dag_import.log
+
+            if [ "$http_code" -ne 200 ]; then
+              echo "Error: Failed to import CAR file. HTTP status $http_code. Response: $body"
+              exit 1
+            fi
+            
+            echo "CAR file imported successfully. Response: $body"
+
       - store_artifacts:
           path: logs/check_unique_namespace.log
           destination: unique-namespace-log
@@ -132,6 +162,12 @@ jobs:
       - store_artifacts:
           path: logs/mint_result.log
           destination: mint-result-log
+      - store_artifacts:
+          path: logs/generate_key_pair.log
+          destination: generate-key-pair-log
+      - store_artifacts:
+          path: logs/dag_import.log
+          destination: dag-import-log
 
 workflows:
   main-workflow:
