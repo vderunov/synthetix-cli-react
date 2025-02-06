@@ -1,17 +1,13 @@
 version: 2.1
 
 executors:
-  foundry-executor:
-    docker:
-      - image: ghcr.io/foundry-rs/foundry:latest
-
   node-executor:
     docker:
       - image: cimg/node:22.11.0
 
 jobs:
-  mint-contract:
-    executor: foundry-executor
+  namespace-deployment:
+    executor: node-executor
     parameters:
       contract-address:
         type: string
@@ -21,24 +17,59 @@ jobs:
         default: "wss://optimism-sepolia-rpc.publicnode.com"
       api-url:
         type: string
-        default: "http://45.146.7.38:3005/"
+        default: "http://195.137.244.62:3005/"
     steps:
-      - attach_workspace:
-          at: /workspace
       - checkout
+
       - run:
-          name: "Install required packages"
+          name: "Install jq and curl"
           command: |
-            apt-get update -y && apt-get install -y jq curl
+            sudo apt-get update -y && sudo apt-get install -y jq curl
+
+      - restore_cache:
+          keys:
+            - npm-cache-{{ checksum "package-lock.json" }}
+      - run:
+          name: "Install Node.js packages"
+          command: npm install
+      - save_cache:
+          key: npm-cache-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+
+      - restore_cache:
+          keys:
+            - &foundry_cache foundry-{{ .Environment.FOUNDRY_CACHE_VERSION }}-{{ .Environment.HOME }}
+      - run:
+          name: 'Install Foundry'
+          working_directory: ~/
+          environment:
+            SHELL: /bin/bash
+          command: |-
+            export PATH="$PATH:$HOME/.foundry/bin"
+            echo 'export PATH=$PATH:$HOME/.foundry/bin' >> $BASH_ENV
+            if command -v forge; then
+              echo "Forge already installed"
+              forge --version
+            else
+              curl -L https://foundry.paradigm.xyz | bash
+              foundryup
+            fi
+      - save_cache:
+          key: *foundry_cache
+          paths:
+            - '~/.foundry'
+
       - run:
           name: "Validate Environment Variables"
           command: |
-            for var in JWT_SECRET NAMESPACE PRIVATE_KEY; do
+            for var in JWT_SECRET NAMESPACE PRIVATE_KEY FOUNDRY_CACHE_VERSION HOME; do
               if [ -z "${!var}" ]; then
                 echo "Error: $var is not set!" && exit 1
               fi
             done
             echo "All required environment variables are set."
+
       - run:
           name: "Validate API Connection"
           command: |
@@ -46,9 +77,11 @@ jobs:
               echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
             fi
             echo "API endpoint is reachable."
+
       - run:
           name: "Prepare Logs Directory"
           command: mkdir -p logs
+
       - run:
           name: "Check Unique Namespace"
           command: |
@@ -72,6 +105,7 @@ jobs:
               exit 1
             fi
             echo "Namespace is unique. Response: $body"
+
       - run:
           name: "Check Unique Generated Key"
           command: |
@@ -95,12 +129,14 @@ jobs:
               exit 1
             fi
             echo "Generated key is unique. Response: $body"
+
       - run:
           name: "Mint Namespace Token and Save Logs"
           command: |
             cast send <<parameters.contract-address>> "safeMint(string)" "$NAMESPACE" \
               --rpc-url <<parameters.rpc-url>> \
               --private-key "$PRIVATE_KEY" | tee logs/mint_result.log
+
       - run:
           name: "Parse and Check Mint Result"
           command: |
@@ -112,6 +148,7 @@ jobs:
             else
               echo "Minting failed. Check logs/mint_result.log for details." && exit 1
             fi
+
       - run:
           name: "Generate Key Pair"
           command: |
@@ -129,10 +166,15 @@ jobs:
             fi
 
             echo "Key pair generated successfully. Response: $body"
+
+      - run:
+          name: "Generate CAR File"
+          command: node generateCarBlob.js
+
       - run:
           name: "Import CAR File via DAG Import"
           command: |
-            car_file=$(find /workspace/car_files -type f -name "*.car")
+            car_file=$(find car_files -type f -name "*.car")
             if [ -z "$car_file" ]; then
               echo "Error: CAR file not found!" && exit 1
             fi
@@ -152,40 +194,40 @@ jobs:
             
             echo "CAR file imported successfully. Response: $body"
 
-      - store_artifacts:
-          path: logs/check_unique_namespace.log
-          destination: unique-namespace-log
-      - store_artifacts:
-          path: logs/check_unique_generated_key.log
-          destination: unique-generated-key-log
-      - store_artifacts:
-          path: logs/mint_result.log
-          destination: mint-result-log
-      - store_artifacts:
-          path: logs/generate_key_pair.log
-          destination: generate-key-pair-log
-      - store_artifacts:
-          path: logs/dag_import.log
-          destination: dag-import-log
-
-  generate-car-file:
-    executor: node-executor
-    steps:
-      - checkout
       - run:
-          name: "Generate CAR File"
+          name: "Publish Name with Root CID"
           command: |
-            npm install
-            node generateCarBlob.js
-      - persist_to_workspace:
-          root: .
-          paths:
-            - car_files/
+            key_name=$(jq -r '.Name' logs/generate_key_pair.log)
+            root_cid=$(jq -r '.Root.Cid["/"]' logs/dag_import.log)
+
+            if [ -z "$key_name" ]; then
+              echo "Error: Key name not found in generate_key_pair.log!" && exit 1
+            fi
+
+            if [ -z "$root_cid" ]; then
+              echo "Error: Root CID not found in dag_import.log!" && exit 1
+            fi
+
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/name/publish?key=${key_name}&arg=/ipfs/${root_cid}&ttl=10s" \
+              -H "Authorization: Bearer $JWT_SECRET" \
+              -H "Content-Type: application/json")
+
+            body=$(cat body.txt)
+
+            echo "$body" >> logs/name_publish.log
+
+            if [ "$http_code" -ne 200 ]; then
+              echo "Error: Failed to publish name. HTTP status $http_code. Response: $body"
+              exit 1
+            fi
+
+            echo "Name published successfully. Response: $body"
+
+      - store_artifacts:
+          path: logs/
+          destination: all-logs
 
 workflows:
   main-workflow:
     jobs:
-      - generate-car-file
-      - mint-contract:
-          requires:
-            - generate-car-file
+      - namespace-deployment
