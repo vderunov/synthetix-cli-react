@@ -1,7 +1,13 @@
 version: 2.1
 
+executors:
+  docker-executor:
+    docker:
+      - image: ghcr.io/foundry-rs/foundry:latest
+
 jobs:
   mint-contract:
+    executor: docker-executor
     parameters:
       private-key:
         type: env_var_name
@@ -21,8 +27,6 @@ jobs:
       jwt-secret:
         type: env_var_name
         default: JWT_SECRET
-    docker:
-      - image: ghcr.io/foundry-rs/foundry:latest
     steps:
       - checkout
       - run:
@@ -32,10 +36,10 @@ jobs:
           name: "Check Unique Namespace"
           command: |
             mkdir -p logs
-            response=$(curl -s -w "%{http_code}" -X POST "$<<parameters.api-url>>/unique-namespace" \
-              -H "Authorization: Bearer $<<parameters.jwt-secret>>" \
+            response=$(curl -s -w "%{http_code}" -X POST "$\<<parameters.api-url>>/unique-namespace" \
+              -H "Authorization: Bearer $\<<parameters.jwt-secret>>" \
               -H "Content-Type: application/json" \
-              -d '{"namespace":"'"$<<parameters.namespace>>"'"}')
+              -d '{"namespace":"'"$\<<parameters.namespace>>"'"}')
             http_code=$(tail -n1 <<< "$response")
             body=$(head -n-1 <<< "$response")
             
@@ -56,10 +60,10 @@ jobs:
           name: "Check Unique Generated Key"
           command: |
             mkdir -p logs
-            response=$(curl -s -w "%{http_code}" -X POST "$<<parameters.api-url>>/unique-generated-key" \
-              -H "Authorization: Bearer $<<parameters.jwt-secret>>" \
+            response=$(curl -s -w "%{http_code}" -X POST "$\<<parameters.api-url>>/unique-generated-key" \
+              -H "Authorization: Bearer $\<<parameters.jwt-secret>>" \
               -H "Content-Type: application/json" \
-              -d '{"key":"'"$<<parameters.namespace>>"'"}')
+              -d '{"key":"'"$\<<parameters.namespace>>"'"}')
             http_code=$(tail -n1 <<< "$response")
             body=$(head -n-1 <<< "$response")
             
@@ -80,9 +84,9 @@ jobs:
           name: "Mint Namespace Token and Save Logs"
           command: |
             mkdir -p logs
-            cast send $<<parameters.contract-address>> "safeMint(string)" $<<parameters.namespace>> \
-              --rpc-url $<<parameters.rpc-url>> \
-              --private-key $<<parameters.private-key>> | tee logs/mint_result.log
+            cast send $\<<parameters.contract-address>> "safeMint(string)" $\<<parameters.namespace>> \
+              --rpc-url $\<<parameters.rpc-url>> \
+              --private-key $\<<parameters.private-key>> | tee logs/mint_result.log
       - run:
           name: "Parse and Check Mint Result"
           command: |
