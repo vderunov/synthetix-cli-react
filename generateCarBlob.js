@@ -2,7 +2,7 @@ import { createHelia } from 'helia';
 import { unixfs } from '@helia/unixfs';
 import { car } from '@helia/car';
 import { CarWriter } from '@ipld/car';
-import fsPromises from 'node:fs/promises';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 async function carWriterOutToBuffer(out) {
@@ -13,11 +13,11 @@ async function carWriterOutToBuffer(out) {
   return Buffer.concat(parts);
 }
 
-async function getFilesRecursive(directory) {
-  const entries = await fsPromises.readdir(directory, { withFileTypes: true });
+async function getFilesRecursive(dir) {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
   const files = await Promise.all(
     entries.map(async (entry) => {
-      const fullPath = path.join(directory, entry.name);
+      const fullPath = path.join(dir, entry.name);
       return entry.isDirectory() ? await getFilesRecursive(fullPath) : fullPath;
     })
   );
@@ -27,10 +27,9 @@ async function getFilesRecursive(directory) {
 async function clearAndCreateCarFilesDir() {
   const carFilesPath = path.resolve('car_files');
   try {
-    await fsPromises.rm(carFilesPath, { recursive: true, force: true });
-  } catch (_) {
-  }
-  await fsPromises.mkdir(carFilesPath, { recursive: true });
+    await fs.rm(carFilesPath, { recursive: true, force: true });
+  } catch {}
+  await fs.mkdir(carFilesPath, { recursive: true });
 }
 
 async function generateCarBlob() {
@@ -38,7 +37,7 @@ async function generateCarBlob() {
     const directory = (
       await Promise.all(
         ['build', 'dist'].map(async (dir) =>
-          (await fsPromises.stat(dir).then(() => dir).catch(() => null))
+          (await fs.stat(dir).then(() => dir).catch(() => null))
         )
       )
     ).find(Boolean);
@@ -55,7 +54,7 @@ async function generateCarBlob() {
     const inputFiles = await Promise.all(
       allFiles.map(async (file) => ({
         path: path.relative(directory, file),
-        content: new Uint8Array(await fsPromises.readFile(file)),
+        content: new Uint8Array(await fs.readFile(file)),
       }))
     );
 
@@ -75,14 +74,12 @@ async function generateCarBlob() {
 
     const c = car(helia);
     const { writer, out } = await CarWriter.create(rootCID);
-
     const carBufferPromise = carWriterOutToBuffer(out);
     await c.export(rootCID, writer);
-
     const carBlob = await carBufferPromise;
 
     const filePath = path.resolve(`car_files/${rootCID.toString()}.car`);
-    await fsPromises.writeFile(filePath, carBlob);
+    await fs.writeFile(filePath, carBlob);
 
     console.log(`CAR Blob generated at: ${filePath}`);
   } catch (error) {

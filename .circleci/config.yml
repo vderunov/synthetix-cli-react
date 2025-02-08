@@ -25,12 +25,6 @@ jobs:
       - checkout
 
       - run:
-          name: Getting the Code
-          command: |
-            ls -al
-            echo '^^^Your repo files^^^'
-
-      - run:
           name: "Install jq and curl"
           command: |
             sudo apt-get update -y && sudo apt-get install -y jq curl
@@ -38,9 +32,11 @@ jobs:
       - restore_cache:
           keys:
             - npm-cache-{{ checksum "package-lock.json" }}
+
       - run:
-          name: "Install Node.js packages"
+          name: "Install Node.js Packages"
           command: npm install
+
       - save_cache:
           key: npm-cache-{{ checksum "package-lock.json" }}
           paths:
@@ -49,8 +45,9 @@ jobs:
       - restore_cache:
           keys:
             - &foundry_cache foundry-<<parameters.foundry-cache-version>>-{{ .Environment.HOME }}
+
       - run:
-          name: 'Install Foundry'
+          name: "Install Foundry"
           working_directory: ~/
           environment:
             SHELL: /bin/bash
@@ -58,12 +55,13 @@ jobs:
             export PATH="$PATH:$HOME/.foundry/bin"
             echo 'export PATH=$PATH:$HOME/.foundry/bin' >> $BASH_ENV
             if command -v forge; then
-              echo "Forge already installed"
+              echo "Forge is already installed."
               forge --version
             else
               curl -L https://foundry.paradigm.xyz | bash
               foundryup
             fi
+
       - save_cache:
           key: *foundry_cache
           paths:
