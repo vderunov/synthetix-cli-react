@@ -177,6 +177,12 @@ jobs:
             echo "Key pair generated successfully. Response: $body"
 
       - run:
+          name: "Build Project"
+          command: |
+            echo "Building the project..."
+            npm run build
+
+      - run:
           name: "Generate CAR File"
           command: node generateCarBlob.js
 
