@@ -86,6 +86,42 @@ jobs:
             echo "API endpoint is reachable."
 
       - run:
+          name: "Enhanced Namespace Validation with Fix"
+          command: |
+            mkdir -p logs
+            
+            echo "Raw NAMESPACE value: '$NAMESPACE'" | tee logs/namespace.log
+            
+            # Удаляем символы CR (\r) и LF (\n)
+            NAMESPACE=$(echo "$NAMESPACE" | tr -d '\r\n' | xargs)
+            
+            echo "Processed NAMESPACE value: '$NAMESPACE'" | tee -a logs/namespace.log
+
+            if [ "${#NAMESPACE}" -lt 3 ] || [ "${#NAMESPACE}" -gt 30 ]; then
+              echo "Error: Namespace must be between 3 and 30 characters long." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            if ! [[ "$NAMESPACE" =~ ^[a-z0-9-_]+$ ]]; then
+              echo "Debugging regex issue for NAMESPACE value: '$NAMESPACE'" >> logs/namespace.log
+              echo "$NAMESPACE" | xxd >> logs/namespace.log
+              echo "Error: Namespace must be DNS-compatible: lowercase letters, numbers, dashes (-), or underscores (_)." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            if [[ "$NAMESPACE" =~ ^- || "$NAMESPACE" =~ -$ ]]; then
+              echo "Error: Namespace cannot start or end with a dash (-)." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            if [[ "$NAMESPACE" =~ ^_ || "$NAMESPACE" =~ _$ ]]; then
+              echo "Error: Namespace cannot start or end with an underscore (_)." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            echo "Namespace validation passed for: '$NAMESPACE'" | tee -a logs/namespace.log
+
+      - run:
           name: "Prepare Logs Directory"
           command: mkdir -p logs
 
