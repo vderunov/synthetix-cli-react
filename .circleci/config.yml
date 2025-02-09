@@ -122,7 +122,7 @@ jobs:
               -H "Content-Type: application/json" \
               -d '{"namespace":"'"$NAMESPACE"'"}')
 
-            body=$(cat body.txt)
+            body=$(cat body.txt | jq)
 
             echo "$body" >> logs/check_unique_namespace.log
 
@@ -146,7 +146,7 @@ jobs:
               -H "Content-Type: application/json" \
               -d '{"key":"'"$NAMESPACE"'"}')
 
-            body=$(cat body.txt)
+            body=$(cat body.txt | jq)
 
             echo "$body" >> logs/check_unique_generated_key.log
 
@@ -188,7 +188,7 @@ jobs:
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
-            body=$(cat body.txt)
+            body=$(cat body.txt | jq)
 
             echo "$body" >> logs/generate_key_pair.log
 
@@ -221,7 +221,7 @@ jobs:
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
             
-            body=$(cat body.txt)
+            body=$(cat body.txt | jq)
             
             echo "$body" >> logs/dag_import.log
 
@@ -245,7 +245,7 @@ jobs:
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
-            body=$(cat body.txt)
+            body=$(cat body.txt | jq)
 
             echo "$body" >> logs/dag_get.log
 
@@ -274,7 +274,7 @@ jobs:
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
-            body=$(cat body.txt)
+            body=$(cat body.txt | jq)
 
             echo "$body" >> logs/name_publish.log
 
