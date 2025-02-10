@@ -52,10 +52,12 @@ async function generateCarBlob() {
     }
 
     const inputFiles = await Promise.all(
-      allFiles.map(async (file) => ({
-        path: path.relative(directory, file),
-        content: new Uint8Array(await fs.readFile(file)),
-      }))
+      allFiles.map(async (file) => {
+        return {
+          path: file,
+          content: new Uint8Array(await fs.readFile(file)),
+        }
+      })
     );
 
     await clearAndCreateCarFilesDir();
