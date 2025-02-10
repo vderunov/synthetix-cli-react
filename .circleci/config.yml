@@ -1,239 +1,73 @@
 version: 2.1
-
 executors:
   node-executor:
     docker:
-      - image: cimg/node:22.11.0
-
+      - image: 'cimg/node:22.11.0'
 jobs:
   namespace-deployment:
     executor: node-executor
     parameters:
-      contract-address:
-        type: string
-        default: "0xe1C296cb79E050EB2A52b24D9Be91f8599B32011"
-      rpc-url:
-        type: string
-        default: "wss://optimism-sepolia-rpc.publicnode.com"
       api-url:
         type: string
-        default: "http://195.137.244.62:3005/"
-      foundry-cache-version:
-        type: string
-        default: "1.0.1"
+        default: 'http://195.137.244.62:3005/'
     steps:
       - checkout
-
       - run:
-          name: "Install jq and curl"
+          name: Install Dependencies
           command: |
             sudo apt-get update -y && sudo apt-get install -y jq curl
-
+            npm install
       - restore_cache:
           keys:
-            - npm-cache-{{ checksum "package-lock.json" }}
-
-      - run:
-          name: "Install Node.js Packages"
-          command: npm install
-
+            - 'npm-cache-{{ checksum "package-lock.json" }}'
       - save_cache:
-          key: npm-cache-{{ checksum "package-lock.json" }}
+          key: 'npm-cache-{{ checksum "package-lock.json" }}'
           paths:
             - node_modules
-
-      - restore_cache:
-          keys:
-            - &foundry_cache foundry-<<parameters.foundry-cache-version>>-{{ .Environment.HOME }}
-
       - run:
-          name: "Install Foundry"
-          working_directory: ~/
-          environment:
-            SHELL: /bin/bash
-          command: |-
-            export PATH="$PATH:$HOME/.foundry/bin"
-            echo 'export PATH=$PATH:$HOME/.foundry/bin' >> $BASH_ENV
-            if command -v forge; then
-              echo "Forge is already installed."
-              forge --version
-            else
-              curl -L https://foundry.paradigm.xyz | bash
-              foundryup
-            fi
-
-      - save_cache:
-          key: *foundry_cache
-          paths:
-            - '~/.foundry'
-
-      - run:
-          name: "Validate Environment Variables"
+          name: Validate Environment Variables
           command: |
-            for var in JWT_SECRET NAMESPACE PRIVATE_KEY; do
+            for var in JWT_SECRET NAMESPACE; do
               if [ -z "${!var}" ]; then
                 echo "Error: $var is not set!" && exit 1
               fi
             done
             echo "All required environment variables are set."
-
       - run:
-          name: "Fetch Validate API Connection"
+          name: Fetch Validate API Connection
           command: |
             if ! curl -I "<<parameters.api-url>>unique-namespace"; then
               echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
             fi
             echo "API endpoint is reachable."
-
+      - run: npm run build
+      - run: node generateCarBlob.js
       - run:
-          name: "Prepare Logs Directory"
-          command: mkdir -p logs
-
-      - run:
-          name: "Namespace Validation"
-          command: |
-            if [ "${#NAMESPACE}" -lt 3 ] || [ "${#NAMESPACE}" -gt 30 ]; then
-              echo "Error: Namespace must be between 3 and 30 characters long." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-            if ! [[ "$NAMESPACE" =~ ^[a-z0-9_\\-]+$ ]]; then
-              echo "Error: Namespace must be DNS-compatible: lowercase letters, numbers, dashes (-), or underscores (_)." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-            if [[ "$NAMESPACE" =~ ^- || "$NAMESPACE" =~ -$ ]]; then
-              echo "Error: Namespace cannot start or end with a dash (-)." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-            if [[ "$NAMESPACE" =~ ^_ || "$NAMESPACE" =~ _$ ]]; then
-              echo "Error: Namespace cannot start or end with an underscore (_)." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-            echo "Namespace validation passed for: '$NAMESPACE'" | tee -a logs/namespace.log
-
-      - run:
-          name: "Fetch Check Unique Namespace"
-          command: |
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-namespace" \
-              -H "Authorization: Bearer $JWT_SECRET" \
-              -H "Content-Type: application/json" \
-              -d '{"namespace":"'"$NAMESPACE"'"}')
-
-            body=$(cat body.txt | jq)
-
-            echo "$body" >> logs/check_unique_namespace.log
-
-            if [ "$http_code" -ne 200 ]; then
-              echo "Error: HTTP status $http_code while checking namespace uniqueness. Response: $body"
-              exit 1
-            fi
-
-            is_unique=$(echo "$body" | jq -r '.unique')
-            if [ "$is_unique" != "true" ]; then
-              echo "Error: Namespace is not unique. Response: $body"
-              exit 1
-            fi
-            echo "Namespace is unique. Response: $body"
-
-      - run:
-          name: "Fetch Check Unique Generated Key"
-          command: |
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-generated-key" \
-              -H "Authorization: Bearer $JWT_SECRET" \
-              -H "Content-Type: application/json" \
-              -d '{"key":"'"$NAMESPACE"'"}')
-
-            body=$(cat body.txt | jq)
-
-            echo "$body" >> logs/check_unique_generated_key.log
-
-            if [ "$http_code" -ne 200 ]; then
-              echo "Error: HTTP status $http_code while checking generated key uniqueness. Response: $body"
-              exit 1
-            fi
-
-            is_unique=$(echo "$body" | jq -r '.unique')
-            if [ "$is_unique" != "true" ]; then
-              echo "Error: Generated key is not unique. Response: $body"
-              exit 1
-            fi
-            echo "Generated key is unique. Response: $body"
-
-      - run:
-          name: "Mint Namespace Token and Save Logs"
-          command: |
-            cast send <<parameters.contract-address>> "safeMint(string)" "$NAMESPACE" \
-              --rpc-url <<parameters.rpc-url>> \
-              --private-key "$PRIVATE_KEY" | tee logs/mint_result.log
-
-      - run:
-          name: "Parse and Check Mint Result"
-          command: |
-            status=$(grep "status" logs/mint_result.log | awk '{print $2}')
-            tx_hash=$(grep "transactionHash" logs/mint_result.log | awk '{print $2}')
-            
-            if [ "$status" -eq 1 ] && [ -n "$tx_hash" ]; then
-              echo "Minting succeeded!"
-            else
-              echo "Minting failed. Check logs/mint_result.log for details." && exit 1
-            fi
-
-      - run:
-          name: "Fetch Generate Key Pair"
-          command: |
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/key/gen?arg=$NAMESPACE&type=rsa" \
-              -H "Authorization: Bearer $JWT_SECRET" \
-              -H "Content-Type: application/json")
-
-            body=$(cat body.txt | jq)
-
-            echo "$body" >> logs/generate_key_pair.log
-
-            if [ "$http_code" -ne 200 ]; then
-              echo "Error: Failed to generate a new key pair. HTTP status $http_code. Response: $body"
-              exit 1
-            fi
-
-            echo "Key pair generated successfully. Response: $body"
-
-      - run:
-          name: "Build Project"
-          command: |
-            echo "Building the project..."
-            npm run build
-
-      - run:
-          name: "Generate CAR File"
-          command: node generateCarBlob.js
-
-      - run:
-          name: "Fetch CAR File Import (DAG Import)"
+          name: Fetch CAR File Import (DAG Import)
           command: |
             car_file=$(find car_files -type f -name "*.car")
+
             if [ -z "$car_file" ]; then
               echo "Error: CAR file not found!" && exit 1
             fi
-            
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/dag/import?pin-roots=true" \
+
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
+            "<<parameters.api-url>>api/v0/dag/import?pin-roots=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
-            
+
             body=$(cat body.txt | jq)
-            
+
             echo "$body" >> logs/dag_import.log
 
             if [ "$http_code" -ne 200 ]; then
               echo "Error: Failed to import CAR file. HTTP status $http_code. Response: $body"
               exit 1
             fi
-            
-            echo "CAR file imported successfully. Response: $body"
 
+            echo "CAR file imported successfully. Response: $body"
       - run:
-          name: "Fetch DAG Get"
+          name: Fetch DAG Get
           command: |
             root_cid=$(jq -r '.Root.Cid["/"]' logs/dag_import.log)
 
@@ -241,7 +75,8 @@ jobs:
               echo "Error: Root CID not found in dag_import.log!" && exit 1
             fi
 
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/dag/get?arg=$root_cid" \
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
+            "<<parameters.api-url>>api/v0/dag/get?arg=$root_cid" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
@@ -255,11 +90,11 @@ jobs:
             fi
 
             echo "DAG fetched successfully. Response: $body"
-
       - run:
-          name: "Fetch Publish Name with Root CID"
+          name: Fetch Publish Name with Root CID
           command: |
             key_name=$(jq -r '.Name' logs/generate_key_pair.log)
+
             root_cid=$(jq -r '.Root.Cid["/"]' logs/dag_import.log)
 
             if [ -z "$key_name" ]; then
@@ -270,7 +105,9 @@ jobs:
               echo "Error: Root CID not found in dag_import.log!" && exit 1
             fi
 
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/name/publish?key=${key_name}&arg=/ipfs/${root_cid}&ttl=10s" \
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
+            "<<parameters.api-url>>api/v0/name/publish?key=${key_name}&arg=/ipfs/${root_cid}&ttl=10s"
+            \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
@@ -284,11 +121,9 @@ jobs:
             fi
 
             echo "Name published successfully. Response: $body"
-
       - store_artifacts:
           path: logs/
           destination: all-logs
-
 workflows:
   main-workflow:
     jobs:
