@@ -2,7 +2,7 @@ version: 2.1
 executors:
   node-executor:
     docker:
-      - image: 'cimg/node:22.11.0'
+      - image: cimg/node:22.11.0
 jobs:
   namespace-deployment:
     executor: node-executor
@@ -12,46 +12,44 @@ jobs:
         default: 'http://195.137.244.62:3005/'
     steps:
       - checkout
-      - run:
-          name: Install Dependencies
-          command: |
-            sudo apt-get update -y && sudo apt-get install -y jq curl
-            npm install
       - restore_cache:
           keys:
-            - 'npm-cache-{{ checksum "package-lock.json" }}'
+            - v1-deps-{{ checksum "package-lock.json" }}
+            - v1-deps-
+      - run: npm install
       - save_cache:
-          key: 'npm-cache-{{ checksum "package-lock.json" }}'
+          key: v1-deps-{{ checksum "package-lock.json" }}
           paths:
             - node_modules
+      - run: sudo apt-get update -y && sudo apt-get install -y jq curl
       - run:
           name: Validate Environment Variables
           command: |
-            for var in JWT_SECRET NAMESPACE; do
+            for var in JWT_SECRET IPFS_KEY_NAME; do
               if [ -z "${!var}" ]; then
                 echo "Error: $var is not set!" && exit 1
               fi
             done
             echo "All required environment variables are set."
       - run:
-          name: Fetch Validate API Connection
+          name: Validate API Connection
           command: |
             if ! curl -I "<<parameters.api-url>>unique-namespace"; then
               echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
             fi
-            echo "API endpoint is reachable."
+            echo "API is reachable."
+      - run: mkdir -p logs
       - run: npm run build
       - run: node generateCarBlob.js
       - run:
-          name: Fetch CAR File Import (DAG Import)
+          name: Import CAR File (DAG Import)
           command: |
             car_file=$(find car_files -type f -name "*.car")
-
             if [ -z "$car_file" ]; then
-              echo "Error: CAR file not found!" && exit 1
+              echo "CAR file not found!" && exit 1
             fi
 
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST \
             "<<parameters.api-url>>api/v0/dag/import?pin-roots=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
@@ -61,21 +59,19 @@ jobs:
             echo "$body" >> logs/dag_import.log
 
             if [ "$http_code" -ne 200 ]; then
-              echo "Error: Failed to import CAR file. HTTP status $http_code. Response: $body"
-              exit 1
+              echo "Import failed. HTTP $http_code: $body" && exit 1
             fi
 
-            echo "CAR file imported successfully. Response: $body"
+            echo "CAR file imported: $body"
       - run:
           name: Fetch DAG Get
           command: |
             root_cid=$(jq -r '.Root.Cid["/"]' logs/dag_import.log)
-
             if [ -z "$root_cid" ]; then
-              echo "Error: Root CID not found in dag_import.log!" && exit 1
+              echo "Root CID not found!" && exit 1
             fi
 
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST \
             "<<parameters.api-url>>api/v0/dag/get?arg=$root_cid" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
@@ -85,29 +81,21 @@ jobs:
             echo "$body" >> logs/dag_get.log
 
             if [ "$http_code" -ne 200 ]; then
-              echo "Error: Fetching DAG failed. HTTP status $http_code. Response: $body"
-              exit 1
+              echo "DAG fetch failed. HTTP $http_code: $body" && exit 1
             fi
 
-            echo "DAG fetched successfully. Response: $body"
+            echo "DAG fetched: $body"
       - run:
-          name: Fetch Publish Name with Root CID
+          name: Publish Name with Root CID
           command: |
-            key_name=$(jq -r '.Name' logs/generate_key_pair.log)
-
             root_cid=$(jq -r '.Root.Cid["/"]' logs/dag_import.log)
 
-            if [ -z "$key_name" ]; then
-              echo "Error: Key name not found in generate_key_pair.log!" && exit 1
-            fi
-
             if [ -z "$root_cid" ]; then
-              echo "Error: Root CID not found in dag_import.log!" && exit 1
+              echo "Missing CID!" && exit 1
             fi
 
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
-            "<<parameters.api-url>>api/v0/name/publish?key=${key_name}&arg=/ipfs/${root_cid}&ttl=10s"
-            \
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST \
+            "<<parameters.api-url>>api/v0/name/publish?key=$IPFS_KEY_NAME&arg=/ipfs/${root_cid}&ttl=10s" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
@@ -116,11 +104,10 @@ jobs:
             echo "$body" >> logs/name_publish.log
 
             if [ "$http_code" -ne 200 ]; then
-              echo "Error: Failed to publish name. HTTP status $http_code. Response: $body"
-              exit 1
+              echo "Publish failed. HTTP $http_code: $body" && exit 1
             fi
 
-            echo "Name published successfully. Response: $body"
+            echo "Name published: $body"
       - store_artifacts:
           path: logs/
           destination: all-logs
