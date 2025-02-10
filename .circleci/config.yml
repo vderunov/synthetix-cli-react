@@ -1,79 +1,53 @@
 version: 2.1
-parameters:
-  contract-address:
-    type: string
-    default: '0xe1C296cb79E050EB2A52b24D9Be91f8599B32011'
-  rpc-url:
-    type: string
-    default: 'wss://optimism-sepolia-rpc.publicnode.com'
-  api-url:
-    type: string
-    default: 'http://195.137.244.62:3005/'
-  foundry-cache-version:
-    type: string
-    default: 1.0.1
+
 executors:
   node-executor:
     docker:
-      - image: 'cimg/node:22.11.0'
-commands:
-  validate-environment:
+      - image: cimg/node:22.11.0
+
+jobs:
+  namespace-deployment:
+    executor: node-executor
+    parameters:
+      contract-address:
+        type: string
+        default: "0xe1C296cb79E050EB2A52b24D9Be91f8599B32011"
+      rpc-url:
+        type: string
+        default: "wss://optimism-sepolia-rpc.publicnode.com"
+      api-url:
+        type: string
+        default: "http://195.137.244.62:3005/"
+      foundry-cache-version:
+        type: string
+        default: "1.0.1"
     steps:
+      - checkout
+
       - run:
-          name: Validate Environment Variables
-          command: |
-            for var in JWT_SECRET NAMESPACE PRIVATE_KEY; do
-              if [ -z "${!var}" ]; then
-                echo "Error: $var is not set!" && exit 1
-              fi
-            done
-            echo "All required environment variables are set."
-  prepare-and-validate-namespace:
-    steps:
-      - run:
-          name: Prepare Logs Directory
-          command: mkdir -p logs
-      - run:
-          name: Namespace Validation
-          command: >
-            if [ "${#NAMESPACE}" -lt 3 ] || [ "${#NAMESPACE}" -gt 30 ]; then
-              echo "Error: Namespace must be between 3 and 30 characters long." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-
-            if ! [[ "$NAMESPACE" =~ ^[a-z0-9_\\-]+$ ]]; then
-              echo "Error: Namespace must be DNS-compatible: lowercase letters, numbers, dashes (-), or underscores (_)." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-
-            if [[ "$NAMESPACE" =~ ^- || "$NAMESPACE" =~ -$ ]]; then
-              echo "Error: Namespace cannot start or end with a dash (-)." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-
-            if [[ "$NAMESPACE" =~ ^_ || "$NAMESPACE" =~ _$ ]]; then
-              echo "Error: Namespace cannot start or end with an underscore (_)." | tee -a logs/namespace.log
-              exit 1
-            fi
-
-
-            echo "Namespace validation passed for: '$NAMESPACE'" | tee -a logs/namespace.log
-  install-prerequisites:
-    steps:
-      - run:
-          name: Install jq and curl
+          name: "Install jq and curl"
           command: |
             sudo apt-get update -y && sudo apt-get install -y jq curl
-  install-foundry:
-    steps:
+
       - restore_cache:
           keys:
-            - 'foundry-${{ parameters.foundry-cache-version }}-{{ .Environment.HOME }}'
+            - npm-cache-{{ checksum "package-lock.json" }}
+
       - run:
-          name: Install Foundry
+          name: "Install Node.js Packages"
+          command: npm install
+
+      - save_cache:
+          key: npm-cache-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+
+      - restore_cache:
+          keys:
+            - &foundry_cache foundry-<<parameters.foundry-cache-version>>-{{ .Environment.HOME }}
+
+      - run:
+          name: "Install Foundry"
           working_directory: ~/
           environment:
             SHELL: /bin/bash
@@ -87,21 +61,67 @@ commands:
               curl -L https://foundry.paradigm.xyz | bash
               foundryup
             fi
-      - save_cache:
-          key: 'foundry-${{ parameters.foundry-cache-version }}-{{ .Environment.HOME }}'
-          paths:
-            - ~/.foundry
 
-  check-unique-namespace:
-    steps:
+      - save_cache:
+          key: *foundry_cache
+          paths:
+            - '~/.foundry'
+
       - run:
-          name: Fetch Check Unique Namespace
-          command: >
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
-            "<<parameters.api-url>>unique-namespace" \
+          name: "Validate Environment Variables"
+          command: |
+            for var in JWT_SECRET NAMESPACE PRIVATE_KEY; do
+              if [ -z "${!var}" ]; then
+                echo "Error: $var is not set!" && exit 1
+              fi
+            done
+            echo "All required environment variables are set."
+
+      - run:
+          name: "Fetch Validate API Connection"
+          command: |
+            if ! curl -I "<<parameters.api-url>>unique-namespace"; then
+              echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
+            fi
+            echo "API endpoint is reachable."
+
+      - run:
+          name: "Prepare Logs Directory"
+          command: mkdir -p logs
+
+      - run:
+          name: "Namespace Validation"
+          command: |
+            if [ "${#NAMESPACE}" -lt 3 ] || [ "${#NAMESPACE}" -gt 30 ]; then
+              echo "Error: Namespace must be between 3 and 30 characters long." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            if ! [[ "$NAMESPACE" =~ ^[a-z0-9_\\-]+$ ]]; then
+              echo "Error: Namespace must be DNS-compatible: lowercase letters, numbers, dashes (-), or underscores (_)." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            if [[ "$NAMESPACE" =~ ^- || "$NAMESPACE" =~ -$ ]]; then
+              echo "Error: Namespace cannot start or end with a dash (-)." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            if [[ "$NAMESPACE" =~ ^_ || "$NAMESPACE" =~ _$ ]]; then
+              echo "Error: Namespace cannot start or end with an underscore (_)." | tee -a logs/namespace.log
+              exit 1
+            fi
+
+            echo "Namespace validation passed for: '$NAMESPACE'" | tee -a logs/namespace.log
+
+      - run:
+          name: "Fetch Check Unique Namespace"
+          command: |
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-namespace" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"namespace":"'"$NAMESPACE"'"}')
+
             body=$(cat body.txt | jq)
 
             echo "$body" >> logs/check_unique_namespace.log
@@ -110,142 +130,118 @@ commands:
               echo "Error: HTTP status $http_code while checking namespace uniqueness. Response: $body"
               exit 1
             fi
-      - persist_to_workspace:
-          root: logs/
-          paths:
-            - check_unique_namespace.log
-  check-unique-key:
-    steps:
+
+            is_unique=$(echo "$body" | jq -r '.unique')
+            if [ "$is_unique" != "true" ]; then
+              echo "Error: Namespace is not unique. Response: $body"
+              exit 1
+            fi
+            echo "Namespace is unique. Response: $body"
+
       - run:
-          name: Fetch Check Unique Generated Key
-          command: >
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
-            "<<parameters.api-url>>unique-generated-key" \
+          name: "Fetch Check Unique Generated Key"
+          command: |
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>unique-generated-key" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json" \
               -d '{"key":"'"$NAMESPACE"'"}')
+
             body=$(cat body.txt | jq)
 
             echo "$body" >> logs/check_unique_generated_key.log
 
             if [ "$http_code" -ne 200 ]; then
-              echo "Error: HTTP status $http_code while checking unique key. Response: $body"
+              echo "Error: HTTP status $http_code while checking generated key uniqueness. Response: $body"
               exit 1
             fi
-      - persist_to_workspace:
-          root: logs/
-          paths:
-            - check_unique_generated_key.log
-  mint-namespace-token:
-    steps:
+
+            is_unique=$(echo "$body" | jq -r '.unique')
+            if [ "$is_unique" != "true" ]; then
+              echo "Error: Generated key is not unique. Response: $body"
+              exit 1
+            fi
+            echo "Generated key is unique. Response: $body"
+
       - run:
-          name: Mint Namespace Token
-          command: >
-            cast send ${{ parameters.contract-address }} "safeMint(string)"
-            "$NAMESPACE" \
-              --rpc-url ${{ parameters.rpc-url }} \
+          name: "Mint Namespace Token and Save Logs"
+          command: |
+            cast send <<parameters.contract-address>> "safeMint(string)" "$NAMESPACE" \
+              --rpc-url <<parameters.rpc-url>> \
               --private-key "$PRIVATE_KEY" | tee logs/mint_result.log
+
       - run:
-          name: Parse and Check Mint Result
-          command: >
+          name: "Parse and Check Mint Result"
+          command: |
             status=$(grep "status" logs/mint_result.log | awk '{print $2}')
-  
             tx_hash=$(grep "transactionHash" logs/mint_result.log | awk '{print $2}')
-  
+            
             if [ "$status" -eq 1 ] && [ -n "$tx_hash" ]; then
               echo "Minting succeeded!"
             else
               echo "Minting failed. Check logs/mint_result.log for details." && exit 1
             fi
-  generate-key-pair:
-    parameters:
-      api-url:
-        type: string
-    steps:
+
       - run:
-          name: Fetch Generate Key Pair
-          command: >
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
-            "${{ parameters.api-url }}api/v0/key/gen?arg=$NAMESPACE&type=rsa" \
+          name: "Fetch Generate Key Pair"
+          command: |
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/key/gen?arg=$NAMESPACE&type=rsa" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
+
             body=$(cat body.txt | jq)
-  
+
             echo "$body" >> logs/generate_key_pair.log
-  
+
             if [ "$http_code" -ne 200 ]; then
               echo "Error: Failed to generate a new key pair. HTTP status $http_code. Response: $body"
               exit 1
             fi
-  
+
             echo "Key pair generated successfully. Response: $body"
-  build-project:
-    steps:
-      - restore_cache:
-          keys:
-            - 'npm-cache-{{ checksum "package-lock.json" }}'
+
       - run:
-          name: Install Node.js Dependencies
-          command: npm install
-      - save_cache:
-          key: 'npm-cache-{{ checksum "package-lock.json" }}'
-          paths:
-            - node_modules
-      - run:
-          name: Build Project
+          name: "Build Project"
           command: |
             echo "Building the project..."
             npm run build
-  generate-car-file:
-    steps:
-      - run:
-          name: Generate CAR File
-          command: node generateCarBlob.js
-  import-car-file:
-    parameters:
-      api-url:
-        type: string
-    steps:
-      - run:
-          name: Fetch CAR File Import (DAG Import)
-          command: >
-            car_file=$(find car_files -type f -name "*.car")
 
+      - run:
+          name: "Generate CAR File"
+          command: node generateCarBlob.js
+
+      - run:
+          name: "Fetch CAR File Import (DAG Import)"
+          command: |
+            car_file=$(find car_files -type f -name "*.car")
             if [ -z "$car_file" ]; then
               echo "Error: CAR file not found!" && exit 1
             fi
-
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
-            "<<parameters.api-url>>api/v0/dag/import?pin-roots=true" \
+            
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/dag/import?pin-roots=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
-
+            
             body=$(cat body.txt | jq)
-
+            
             echo "$body" >> logs/dag_import.log
 
             if [ "$http_code" -ne 200 ]; then
               echo "Error: Failed to import CAR file. HTTP status $http_code. Response: $body"
               exit 1
             fi
-
+            
             echo "CAR file imported successfully. Response: $body"
-  dag-get:
-    parameters:
-      api-url:
-        type: string
-    steps:
+
       - run:
-          name: Fetch DAG Get
-          command: >
+          name: "Fetch DAG Get"
+          command: |
             root_cid=$(jq -r '.Root.Cid["/"]' logs/dag_import.log)
 
             if [ -z "$root_cid" ]; then
               echo "Error: Root CID not found in dag_import.log!" && exit 1
             fi
 
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
-            "<<parameters.api-url>>api/v0/dag/get?arg=$root_cid" \
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/dag/get?arg=$root_cid" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
@@ -259,16 +255,11 @@ commands:
             fi
 
             echo "DAG fetched successfully. Response: $body"
-  publish:
-    parameters:
-      api-url:
-        type: string
-    steps:
-      - run:
-          name: Fetch Publish
-          command: >
-            key_name=$(jq -r '.Name' logs/generate_key_pair.log)
 
+      - run:
+          name: "Fetch Publish Name with Root CID"
+          command: |
+            key_name=$(jq -r '.Name' logs/generate_key_pair.log)
             root_cid=$(jq -r '.Root.Cid["/"]' logs/dag_import.log)
 
             if [ -z "$key_name" ]; then
@@ -279,105 +270,26 @@ commands:
               echo "Error: Root CID not found in dag_import.log!" && exit 1
             fi
 
-            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST
-            "<<parameters.api-url>>api/v0/name/publish?key=${key_name}&arg=/ipfs/${root_cid}&ttl=10s"
-            \
+            http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST "<<parameters.api-url>>api/v0/name/publish?key=${key_name}&arg=/ipfs/${root_cid}&ttl=10s" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
             body=$(cat body.txt | jq)
 
-            echo "$body" >> logs/publish.log
+            echo "$body" >> logs/name_publish.log
 
             if [ "$http_code" -ne 200 ]; then
-              echo "Error: Failed to publish. HTTP status $http_code. Response: $body"
+              echo "Error: Failed to publish name. HTTP status $http_code. Response: $body"
               exit 1
             fi
 
-            echo "Published successfully. Response: $body"
-jobs:
-  prepare-environment:
-    executor: node-executor
-    steps:
-      - checkout
-      - validate-environment
-      - prepare-and-validate-namespace
-      - install-prerequisites
-      - install-foundry
-  check-flags:
-    executor: node-executor
-    steps:
-      - check-unique-namespace
-      - check-unique-key
-  mint:
-    executor: node-executor
-    steps:
-      - attach_workspace:
-          at: logs/
-      - run:
-          name: Check Conditions for Mint
-          command: >
-            namespace_is_unique=$(jq -r '.unique' logs/check_unique_namespace.log)
+            echo "Name published successfully. Response: $body"
 
-            key_is_unique=$(jq -r '.unique' logs/check_unique_generated_key.log)
-
-            if [ "$namespace_is_unique" = "false" ]; then
-              echo "No need to mint. Exiting..."
-              exit 0
-            fi
-      - mint-namespace-token
-  generate-key:
-    parameters:
-      api-url:
-        type: string
-    executor: node-executor
-    steps:
-      - attach_workspace:
-          at: logs/
-      - run:
-          name: Conditional Generate Key Pair
-          command: >
-            namespace_is_unique=$(jq -r '.unique' logs/check_unique_namespace.log)
-            
-            key_is_unique=$(jq -r '.unique' logs/check_unique_generated_key.log)
-            
-            if [ "$namespace_is_unique" = "false" ] && [ "$key_is_unique" = "true" ]; then
-              echo "Proceeding with key generation."
-            else
-              echo "Key generation skipped."
-              exit 0
-            fi
-      - generate-key-pair:
-          api-url: <<parameters.api-url>>
-  project:
-    executor: node-executor
-    steps:
-      - attach_workspace:
-          at: workspace/
-      - build-project
-      - generate-car-file
-      - import-car-file:
-          api-url: << pipeline.parameters.api-url >>
-      - dag-get:
-          api-url: << pipeline.parameters.api-url >>
-      - publish:
-          api-url: << pipeline.parameters.api-url >>
       - store_artifacts:
           path: logs/
           destination: all-logs
+
 workflows:
   main-workflow:
     jobs:
-      - prepare-environment
-      - check-flags
-      - mint:
-          requires:
-            - check-flags
-      - generate-key:
-          requires:
-            - check-flags
-          api-url: << pipeline.parameters.api-url >>
-      - project:
-          requires:
-            - mint
-            - generate-key
+      - namespace-deployment
