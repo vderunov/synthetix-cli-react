@@ -17,6 +17,7 @@ jobs:
             - v1-deps-{{ checksum "package-lock.json" }}
             - v1-deps-
       - run: npm install
+      - run: npm install @synthetixio/synthetix-node-cargen
       - save_cache:
           key: v1-deps-{{ checksum "package-lock.json" }}
           paths:
@@ -41,7 +42,7 @@ jobs:
       - run: mkdir -p logs
       - run: npm run build
       - run: mkdir -p car_files
-      - run: node generate.js build car_files
+      - run: npx synthetix-node-cargen build car_files
       - run:
           name: Import CAR File (DAG Import)
           command: |
