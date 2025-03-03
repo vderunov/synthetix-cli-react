@@ -42,7 +42,9 @@ jobs:
       - run: mkdir -p logs
       - run: npm run build
       - run: mkdir -p car_files
-      - run: npx synthetix-node-cargen build car_files
+      - run: |
+          npx synthetix-node-cargen build car_files
+          find car_files -type f > logs/car_files.log
       - run:
           name: Import CAR File (DAG Import)
           command: |
