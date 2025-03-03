@@ -44,6 +44,12 @@ jobs:
       - run: mkdir -p car_files
       - run: npx synthetix-node-cargen build car_files
       - run:
+         name: Debug CAR File Existence
+         command: |
+           echo "Checking for CAR files:"
+           ls -lh car_files
+
+      - run:
           name: Import CAR File (DAG Import)
           command: |
             car_file=$(find car_files -type f -name "*.car")
