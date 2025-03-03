@@ -41,7 +41,25 @@ jobs:
             echo "API is reachable."
       - run: mkdir -p logs
       - run: npm run build
+
+      - run:
+         name: Debug Project Structure
+         command: tree -L 2 > logs/project_structure.log || ls -R > logs/project_structure.log
+
       - run: mkdir -p car_files
+
+      - run:
+          name: Debug CAR File Generation
+          command: |
+            npx synthetix-node-cargen build car_files > logs/cargen_output.log 2>&1
+            echo "CAR generation output saved in logs/cargen_output.log"
+      - run:
+          name: Debug CAR Files Directory
+          command: |
+            echo "Contents of car_files directory:" > logs/car_files_structure.log
+            ls -lh car_files >> logs/car_files_structure.log || echo "Directory car_files does not exist" >> logs/car_files_structure.log
+
+
       - run: npx synthetix-node-cargen build car_files
       - run:
           name: Import CAR File (DAG Import)
@@ -113,6 +131,10 @@ jobs:
       - store_artifacts:
           path: logs/
           destination: all-logs
+      - store_artifacts:
+          path: logs/
+          destination: debug-logs
+
 workflows:
   main-workflow:
     jobs:
