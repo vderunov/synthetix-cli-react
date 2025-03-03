@@ -44,18 +44,6 @@ jobs:
       - run: mkdir -p car_files
       - run: npx synthetix-node-cargen build car_files
       - run:
-         name: Check Project Structure Before Import
-         command: |
-           echo "Checking project structure before importing CAR file:"
-           ls -lhR
-           echo "Checking contents of car_files directory:"
-           if [ -d "car_files" ]; then
-             ls -lh car_files
-           else
-             echo "Directory 'car_files' does not exist."
-           fi
-
-      - run:
           name: Import CAR File (DAG Import)
           command: |
             car_file=$(find car_files -type f -name "*.car")
