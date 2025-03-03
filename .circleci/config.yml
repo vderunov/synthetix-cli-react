@@ -55,7 +55,6 @@ jobs:
             "<<parameters.api-url>>/api/v0/dag/import?pin-roots=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
-            mv body.txt logs/
 
             body=$(cat body.txt | jq)
 
