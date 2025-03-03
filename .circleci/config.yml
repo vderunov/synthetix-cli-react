@@ -64,7 +64,13 @@ jobs:
       - run:
           name: Import CAR File (DAG Import)
           command: |
-            car_file="car_files/bafybeidt6jsusbo5btfi6jww4k36rnhnl4fl4aubpi2uyowmcsjykyuze4.car"
+            if [ ! -r "$car_file" ]; then
+            echo "Error: CAR file is not readable!"
+            ls -lh "$car_file"
+            exit 1
+            fi
+            echo "CAR file readable: $car_file"
+            car_file=$(find car_files -type f -name "*.car")
             if [ -z "$car_file" ]; then
               echo "CAR file not found!" && exit 1
             fi
