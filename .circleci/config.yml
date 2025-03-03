@@ -44,12 +44,6 @@ jobs:
       - run: mkdir -p car_files
       - run: npx synthetix-node-cargen build car_files
       - run:
-         name: Debug CAR File Existence
-         command: |
-           echo "Checking for CAR files:"
-           ls -lh car_files
-
-      - run:
           name: Import CAR File (DAG Import)
           command: |
             car_file=$(find car_files -type f -name "*.car")
@@ -61,6 +55,12 @@ jobs:
             "<<parameters.api-url>>/api/v0/dag/import?pin-roots=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
+            if [ -s body.txt ]; then
+            echo "Contents of body.txt (Before Parsing):"
+            cat body.txt
+            else
+            echo "Warning: body.txt is either empty or does not exist."
+            fi
 
             body=$(cat body.txt | jq)
 
