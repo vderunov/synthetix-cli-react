@@ -40,6 +40,7 @@ jobs:
             echo "API is reachable."
       - run: mkdir -p logs
       - run: npm run build
+      - run: mkdir -p car_files
       - run: node generate.js build car_files
       - run:
           name: Import CAR File (DAG Import)
