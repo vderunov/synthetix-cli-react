@@ -64,7 +64,7 @@ jobs:
       - run:
           name: Import CAR File (DAG Import)
           command: |
-            car_file=$(find car_files -type f -name "*.car")
+            car_file="car_files/bafybeidt6jsusbo5btfi6jww4k36rnhnl4fl4aubpi2uyowmcsjykyuze4.car"
             if [ -z "$car_file" ]; then
               echo "CAR file not found!" && exit 1
             fi
