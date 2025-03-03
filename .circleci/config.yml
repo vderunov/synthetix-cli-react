@@ -41,57 +41,23 @@ jobs:
             echo "API is reachable."
       - run: mkdir -p logs
       - run: npm run build
-
-      - run:
-         name: Debug Project Structure
-         command: tree -L 2 > logs/project_structure.log || ls -R > logs/project_structure.log
-
       - run: mkdir -p car_files
-
-      - run:
-          name: Debug CAR File Generation
-          command: |
-            npx synthetix-node-cargen build car_files > logs/cargen_output.log 2>&1
-            echo "CAR generation output saved in logs/cargen_output.log"
-      - run:
-          name: Debug CAR Files Directory
-          command: |
-            echo "Contents of car_files directory:" > logs/car_files_structure.log
-            ls -lh car_files >> logs/car_files_structure.log || echo "Directory car_files does not exist" >> logs/car_files_structure.log
-
-
       - run: npx synthetix-node-cargen build car_files
       - run:
-         name: Check CAR File Permissions
+         name: Check Project Structure Before Import
          command: |
-           if [ ! -d "car_files" ]; then
-             echo "Error: Directory 'car_files' does not exist!"
-             exit 1
-           fi
-           
-           car_file=$(find ./car_files -type f -name "*.car" | head -n 1)
-           if [ -z "$car_file" ]; then
-             echo "Error: CAR file not found in 'car_files' directory!"
-             exit 1
-           fi
-           
-           if [ ! -r "$car_file" ]; then
-             echo "Error: CAR file is not readable!"
+           echo "Checking project structure before importing CAR file:"
+           ls -lhR
+           echo "Checking contents of car_files directory:"
+           if [ -d "car_files" ]; then
              ls -lh car_files
-             exit 1
+           else
+             echo "Directory 'car_files' does not exist."
            fi
-           
-           echo "CAR file readable: $car_file"
 
       - run:
           name: Import CAR File (DAG Import)
           command: |
-            if [ ! -r "$car_file" ]; then
-            echo "Error: CAR file is not readable!"
-            ls -lh "$car_file"
-            exit 1
-            fi
-            echo "CAR file readable: $car_file"
             car_file=$(find car_files -type f -name "*.car")
             if [ -z "$car_file" ]; then
               echo "CAR file not found!" && exit 1
@@ -159,10 +125,6 @@ jobs:
       - store_artifacts:
           path: logs/
           destination: all-logs
-      - store_artifacts:
-          path: logs/
-          destination: debug-logs
-
 workflows:
   main-workflow:
     jobs:
