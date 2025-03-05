@@ -35,7 +35,7 @@ jobs:
       - run:
           name: Validate API Connection
           command: |
-            if ! curl -I "<<parameters.api-url>>/api/unique-namespace"; then
+            if ! curl -I "<<parameters.api-url>>/api/unique-namespace?api=true"; then
               echo "Error: API at <<parameters.api-url>> is unreachable!" && exit 1
             fi
             echo "API is reachable."
@@ -54,7 +54,7 @@ jobs:
             fi
 
             http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST \
-            "<<parameters.api-url>>/api/v0/dag/import?pin-roots=true" \
+            "<<parameters.api-url>>/api/v0/dag/import?pin-roots=true&api=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
 
@@ -76,7 +76,7 @@ jobs:
             fi
 
             http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST \
-            "<<parameters.api-url>>/api/v0/dag/get?arg=$root_cid" \
+            "<<parameters.api-url>>/api/v0/dag/get?arg=$root_cid&api=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
@@ -99,7 +99,7 @@ jobs:
             fi
 
             http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST \
-            "<<parameters.api-url>>/api/v0/name/publish?key=$IPFS_KEY_NAME&arg=/ipfs/${root_cid}&ttl=10s" \
+            "<<parameters.api-url>>/api/v0/name/publish?key=$IPFS_KEY_NAME&arg=/ipfs/${root_cid}&ttl=10s&api=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -H "Content-Type: application/json")
 
