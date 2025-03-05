@@ -54,7 +54,7 @@ jobs:
             fi
 
             http_code=$(curl -s -o body.txt -w "%{http_code}" -X POST \
-            "<<parameters.api-url>>/api/v0/dag/import?pin-roots=true&api=true" \
+            "<<parameters.api-url>>/api/v0/dag/import?pin-roots=true" \
               -H "Authorization: Bearer $JWT_SECRET" \
               -F "file=@${car_file}")
 
